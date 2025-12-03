@@ -65,7 +65,7 @@ clf_nn.fit(X, y)
 
 
 # FUNCIÓN DE RECOMENDACIÓN HIBRIDA
-# FUNCIÓN PARA ENTENDER TEXTO LIBRE (coincidencia parcial)
+
 def extraer_atributos(texto):
     texto = texto.lower()
 
