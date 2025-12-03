@@ -65,37 +65,58 @@ clf_nn.fit(X, y)
 
 
 # FUNCIÓN DE RECOMENDACIÓN HIBRIDA
+# FUNCIÓN PARA ENTENDER TEXTO LIBRE (coincidencia parcial)
+def extraer_atributos(texto):
+    texto = texto.lower()
 
+    # Lista de TODOS los atributos posibles :3
+    atributos_posibles = set()
+    for p in perfumes:
+        atributos_posibles.update([p['familia'].lower(),
+                                   p['clima'].lower(),
+                                   p['ocasion'].lower(),
+                                   p['genero'].lower(),
+                                   p['intensidad'].lower(),])
+        atributos_posibles.update([n.lower() for n in p['notas_salida']])
+        atributos_posibles.update([n.lower() for n in p['notas_corazon']])
+        atributos_posibles.update([n.lower() for n in p['notas_fondo']])
+
+    encontrados = []
+    for atr in atributos_posibles:
+        # Coincide aunque esté dentro de una palabra o frase
+        if atr in texto:
+            encontrados.append(atr)
+
+    # Eliminar duplicados
+    return list(set(encontrados))
+
+
+# FUNCIÓN DE RECOMENDACIÓN HIBRIDA (coincidencia parcial)
 def recomendar_perfume(texto_usuario, top_n=3):
-
-    # EXTRAER ATRIBUTOS INTELIGENTES DEL TEXTO
     atributos_usuario = extraer_atributos(texto_usuario)
 
     if not atributos_usuario:
         return "No pude identificar las características."
 
-    # Vectorizar entrada
     texto_vec = vectorizer.transform([texto_usuario.lower()])
-
-    # Predicción (probabilidades)
     proba = clf_nn.predict_proba(texto_vec)[0]
 
     scores = []
     for _, row in df.iterrows():
-
-        # Atributos que sí coinciden entre usuario y perfume
-        atributos_coinciden = [a for a in atributos_usuario if a in row['atributos']]
+        atributos_coinciden = []
+        for a in atributos_usuario:
+            for attr_perfume in row['atributos']:
+                # Coincidencia parcial
+                if a in attr_perfume or attr_perfume in a:
+                    atributos_coinciden.append(a)
+                    break
 
         if not atributos_coinciden:
             continue
 
-        # Índices para la red neural
-        indices = [mlb.classes_.tolist().index(a) for a in atributos_coinciden]
+        indices = [mlb.classes_.tolist().index(a) for a in atributos_coinciden if a in mlb.classes_]
+        score_modelo = sum([proba[i] for i in indices]) / len(indices) if indices else 0
 
-        # Score del modelo (para ordenar)
-        score_modelo = sum([proba[i] for i in indices]) / len(indices)
-
-        # Porcentaje real por coincidencia exacta
         coincidencias = len(atributos_coinciden)
         total_usuario = len(atributos_usuario)
         porcentaje_real = round((coincidencias / total_usuario) * 100)
@@ -105,7 +126,6 @@ def recomendar_perfume(texto_usuario, top_n=3):
     # Ordenar por mayor porcentaje real
     scores.sort(reverse=True, key=lambda x: x[1])
 
-    # Construir respuesta
     resultados = ""
     for score_modelo, porcentaje_real, info in scores[:top_n]:
         resultados += f"""
@@ -127,6 +147,65 @@ Notas:
     return resultados
 
 
-# Ejemplo
-usuario = "me gustaría un perfume con ron y tabaco para clima frío"
-print(recomendar_perfume(usuario))
+# -------------------- Ejemplo --------------------
+# usuario = "me gustaría un perfume lirio y madera"
+# print(recomendar_perfume(usuario))
+
+import tkinter as tk
+from tkinter import scrolledtext, font
+
+# Crear ventana principal
+root = tk.Tk()
+root.title("Recomendador de Perfumes")
+root.geometry("800x600")
+root.configure(bg="#f4f4f9")  # Fondo suave
+
+# Fuente personalizada
+titulo_font = font.Font(family="Helvetica", size=20, weight="bold")
+label_font = font.Font(family="Helvetica", size=12)
+texto_font = font.Font(family="Helvetica", size=11)
+
+# Frame superior para título
+frame_titulo = tk.Frame(root, bg="#f4f4f9")
+frame_titulo.pack(pady=20)
+titulo = tk.Label(frame_titulo, text="✨ Recomendador de Perfumes ✨", font=titulo_font, bg="#f4f4f9", fg="#4b3e72")
+titulo.pack()
+
+# Frame para entrada de usuario
+frame_entrada = tk.Frame(root, bg="#e0dff6", bd=2, relief="ridge")
+frame_entrada.pack(pady=10, padx=20, fill="x")
+
+label = tk.Label(frame_entrada, text="Describe tus preferencias de perfume:", font=label_font, bg="#e0dff6")
+label.pack(pady=5)
+
+entrada = scrolledtext.ScrolledText(frame_entrada, wrap=tk.WORD, width=80, height=5, font=texto_font, bd=1, relief="solid")
+entrada.pack(padx=10, pady=10)
+
+# Frame para botón
+frame_boton = tk.Frame(root, bg="#f4f4f9")
+frame_boton.pack(pady=10)
+
+def mostrar_recomendacion():
+    texto_usuario = entrada.get("1.0", tk.END).strip()
+    if texto_usuario:
+        resultado = recomendar_perfume(texto_usuario, top_n=3)
+        salida.config(state='normal')
+        salida.delete("1.0", tk.END)
+        salida.insert(tk.END, resultado)
+        salida.config(state='disabled')
+
+boton = tk.Button(frame_boton, text="🔍 Recomendar Perfumes", font=label_font, bg="#6c63ff", fg="white",
+                  activebackground="#5751d1", activeforeground="white", padx=20, pady=10,
+                  command=mostrar_recomendacion, relief="raised", bd=3)
+boton.pack()
+
+# Frame para salida de resultados
+frame_salida = tk.Frame(root, bg="#f4f4f9")
+frame_salida.pack(pady=10, padx=20, fill="both", expand=True)
+
+salida = scrolledtext.ScrolledText(frame_salida, wrap=tk.WORD, width=90, height=20, font=texto_font, bd=2, relief="sunken")
+salida.pack(padx=10, pady=10, fill="both", expand=True)
+salida.config(state='disabled')
+
+# Ejecutar ventana
+root.mainloop()
